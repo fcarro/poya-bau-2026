@@ -365,6 +365,8 @@ input.score-inp { width: 52px !important; min-width: 52px; max-width: 52px; text
 const SUPABASE_URL  = 'https://hyiztsfvxjakeehqxsoa.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5aXp0c2Z2eGpha2VlaHF4c29hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNTYzNDMsImV4cCI6MjA5NTczMjM0M30.SrEWxaTZXO_uX1XQ3ltgai4EGZVUaKyWwGnXEyzsx20';
 
+const NAME_OVERRIDES = {};
+
 // ================================================================
 // CONFIGURACIÓN DE PUNTAJE (valores por defecto — se sobreescriben con los de la DB)
 // ================================================================
@@ -952,6 +954,10 @@ function formatHorarioLocal(numeroPartido) {
   return d.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', hour12:false }) + ' hs';
 }
 
+function displayPlayerName(j) {
+  return (typeof NAME_OVERRIDES !== 'undefined' && NAME_OVERRIDES[j.nombre]) || j.nombre;
+}
+
 function matchGrupoTag(grupo) {
   if (!grupo || grupo.length !== 1) return '';
   return `<span class="match-grupo">Grupo ${grupo}</span>`;
@@ -1517,7 +1523,7 @@ function renderDashboard(todosProns) {
     }
     return `<tr style="${isMi ? 'background:rgba(249,115,22,.05);' : ''}">
       <td>${i+1}</td>
-      <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${j.nombre}</td>
+      <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
       ${col(r.grupos)}${col(r.diec)}${col(r.oct)}${col(r.cuart)}${col(r.semi)}${col(r.terc)}${col(r.fin)}
       <td class="col-pts" style="color:#a78bfa;">${campCell}</td>
       <td class="col-total">${total}</td>
@@ -1554,7 +1560,7 @@ function renderDashboard(todosProns) {
     ? `<td class="col-pts"><span style="font-weight:700;">${count}</span> <span style="font-size:.7rem;color:#6b7280;font-weight:400;">${pct}%</span></td>`
     : `<td class="col-pts-0">—</td>`;
   const statsRows = statsRanking.map(({ j, s, pctOk, pctMarc, pctDif }) => `<tr>
-      <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${j.nombre}</td>
+      <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
       <td class="col-pts">${s.tot}</td>
       ${cellCP(s.ok,   pctOk,   s.tot > 0)}
       ${cellCP(s.marc, pctMarc, s.tot > 0)}
@@ -1619,7 +1625,7 @@ function renderMiDesglose(todosProns) {
   const partidos = allPartidos.filter(p => p.resultado);
   if (!partidos.length) return `
     <div class="dash-section">
-      <h2>📋 Mis Puntos <span class="player-color-dot" style="background:${mi.color}"></span><span style="color:#a3a3a3;font-weight:400;font-size:.85rem;">${mi.nombre}</span></h2>
+      <h2>📋 Mis Puntos <span class="player-color-dot" style="background:${mi.color}"></span><span style="color:#a3a3a3;font-weight:400;font-size:.85rem;">${displayPlayerName(mi)}</span></h2>
       <div class="muted">Aún no hay partidos con resultado.</div>
     </div>`;
 
@@ -1687,7 +1693,7 @@ function renderMiDesglose(todosProns) {
 
   return `
   <div class="dash-section">
-    <h2>📋 Mis Puntos &nbsp;<span class="player-color-dot" style="background:${mi.color}; vertical-align:middle;"></span>&nbsp;<span style="color:#a3a3a3; font-weight:400; font-size:.85rem;">${mi.nombre}</span></h2>
+    <h2>📋 Mis Puntos &nbsp;<span class="player-color-dot" style="background:${mi.color}; vertical-align:middle;"></span>&nbsp;<span style="color:#a3a3a3; font-weight:400; font-size:.85rem;">${displayPlayerName(mi)}</span></h2>
     <div class="dash-table-wrap">
       <table class="dash-table" style="min-width:580px;">
         <thead>
