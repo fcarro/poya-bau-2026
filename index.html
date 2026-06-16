@@ -937,14 +937,20 @@ function formatFecha(f) {
 }
 
 function formatFechaHoraLocal(fecha, numeroPartido) {
+  // Si tenemos timestamp UTC, derivamos fecha y hora del MISMO instante,
+  // así ambos se traducen a la zona local del jugador y coinciden entre sí.
+  const utc = HORARIOS[numeroPartido];
+  if (utc) {
+    const d = new Date(utc);
+    const fechaStr = d.toLocaleDateString('es-AR', { weekday:'long', day:'numeric', month:'long' });
+    const capitalizada = fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
+    const horaStr = d.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', hour12:false });
+    return `${capitalizada} · ${horaStr} hs`;
+  }
+  // Fallback (sin UTC en HORARIOS): usamos el string del seed con mediodía UTC, solo fecha.
   const dFecha = new Date(fecha + 'T12:00:00');
   const fechaStr = dFecha.toLocaleDateString('es-AR', { weekday:'long', day:'numeric', month:'long' });
-  const capitalizada = fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
-  const utc = HORARIOS[numeroPartido];
-  if (!utc) return capitalizada;
-  const dHora = new Date(utc);
-  const horaStr = dHora.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', hour12:false });
-  return `${capitalizada} · ${horaStr} hs`;
+  return fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
 }
 
 function formatHorarioLocal(numeroPartido) {
