@@ -367,6 +367,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const NAME_OVERRIDES = {};
 
+const HIDDEN_IN_DASHBOARD = [];
 // ================================================================
 // CONFIGURACIÓN DE PUNTAJE (valores por defecto — se sobreescriben con los de la DB)
 // ================================================================
@@ -1476,6 +1477,10 @@ function calcPuntos(partido, pron) {
 }
 
 function renderDashboard(todosProns) {
+  // Filtrar jugadores ocultos del Dashboard (login y otras tabs no se ven afectados)
+  const jugadoresVisibles = allJugadores.filter(j =>
+    typeof HIDDEN_IN_DASHBOARD === 'undefined' || !HIDDEN_IN_DASHBOARD.includes(j.nombre)
+  );
   // Agrupar pronósticos por partido_id (O(n) en lugar de O(n²) en los loops)
   const pronsPorPartido = {};
   for (const pr of todosProns) {
@@ -1484,7 +1489,7 @@ function renderDashboard(todosProns) {
   }
   // Calcular puntos por jugador
   const puntos = {};
-  for (const j of allJugadores) {
+  for (const j of jugadoresVisibles) {
     puntos[j.id] = {
       grupos:0, diec:0, oct:0, cuart:0, semi:0, terc:0, fin:0, camp:0,
       lev_total:0, marc_total:0, dif_total:0  // breakdown por categoría
@@ -1512,7 +1517,7 @@ function renderDashboard(todosProns) {
     }
   }
   if (campeonReal) {
-    for (const j of allJugadores) {
+    for (const j of jugadoresVisibles) {
       if (j.campeon && j.campeon.trim().toUpperCase() === campeonReal.trim().toUpperCase()) {
         if (puntos[j.id]) puntos[j.id].camp = configPuntos.bonus_campeon ?? 30;
       }
@@ -1520,7 +1525,7 @@ function renderDashboard(todosProns) {
   }
 
   // Ordenar jugadores por total desc
-  const ranking = allJugadores.map(j => {
+  const ranking = jugadoresVisibles.map(j => {
     const r = puntos[j.id] || { grupos:0, diec:0, oct:0, cuart:0, semi:0, terc:0, fin:0, camp:0 };
     const total = r.grupos + r.diec + r.oct + r.cuart + r.semi + r.terc + r.fin + r.camp;
     return { j, r, total };
@@ -1550,7 +1555,7 @@ function renderDashboard(todosProns) {
 
   // Porcentaje de acierto: 3 métricas (L/E/V, marcador exacto, diferencia exacta)
   const stats = {};
-  for (const j of allJugadores) stats[j.id] = { ok:0, marc:0, dif:0, tot:0 };
+  for (const j of jugadoresVisibles) stats[j.id] = { ok:0, marc:0, dif:0, tot:0 };
   for (const p of allPartidos) {
     if (!p.resultado) continue;
     for (const pr of (pronsPorPartido[p.id] || [])) {
@@ -1566,7 +1571,7 @@ function renderDashboard(todosProns) {
     }
   }
   // Ordenar jugadores por % L/E/V desc ANTES de generar las filas
-  const statsRanking = allJugadores.map(j => {
+  const statsRanking = jugadoresVisibles.map(j => {
     const s = stats[j.id] || { ok:0, marc:0, dif:0, tot:0 };
     const pctOk   = s.tot > 0 ? Math.round(s.ok   / s.tot * 100) : 0;
     const pctMarc = s.tot > 0 ? Math.round(s.marc / s.tot * 100) : 0;
