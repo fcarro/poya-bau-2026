@@ -1456,19 +1456,23 @@ async function initDashboard() {
   renderDashboard(todosProns || []);
 }
 
-function calcPuntos(partido, pron) {
-  if (!partido.resultado || !pron?.lev) return 0;
+function calcPuntosDetalle(partido, pron) {
+  if (!partido.resultado || !pron?.lev) return { lev: 0, marc: 0, dif: 0, total: 0 };
   const cfg = configPuntos[partido.fase] ?? configPuntos.grupos;
-  let pts = 0;
-  if (pron.lev === partido.resultado) pts += cfg.base;
+  let lev = 0, marc = 0, dif = 0;
+  if (pron.lev === partido.resultado) lev = cfg.base;
   if (pron.goles_local != null && pron.goles_visitante != null &&
       partido.goles_local != null && partido.goles_visitante != null) {
     if (parseInt(pron.goles_local) === partido.goles_local &&
-        parseInt(pron.goles_visitante) === partido.goles_visitante) pts += cfg.bonus_goles;
+        parseInt(pron.goles_visitante) === partido.goles_visitante) marc = cfg.bonus_goles;
     if ((parseInt(pron.goles_local) - parseInt(pron.goles_visitante)) ===
-        (partido.goles_local - partido.goles_visitante)) pts += cfg.bonus_dif;
+        (partido.goles_local - partido.goles_visitante)) dif = cfg.bonus_dif;
   }
-  return pts;
+  return { lev, marc, dif, total: lev + marc + dif };
+}
+
+function calcPuntos(partido, pron) {
+  return calcPuntosDetalle(partido, pron).total;
 }
 
 function renderDashboard(todosProns) {
@@ -1481,14 +1485,18 @@ function renderDashboard(todosProns) {
   // Calcular puntos por jugador
   const puntos = {};
   for (const j of allJugadores) {
-    puntos[j.id] = { grupos:0, diec:0, oct:0, cuart:0, semi:0, terc:0, fin:0, camp:0 };
+    puntos[j.id] = {
+      grupos:0, diec:0, oct:0, cuart:0, semi:0, terc:0, fin:0, camp:0,
+      lev_total:0, marc_total:0, dif_total:0  // breakdown por categoría
+    };
   }
   for (const p of allPartidos) {
     if (!p.resultado) continue;
     const fase = p.fase;
     for (const pr of (pronsPorPartido[p.id] || [])) {
       if (!puntos[pr.jugador_id]) continue;
-      const pts = calcPuntos(p, pr);
+      const detalle = calcPuntosDetalle(p, pr);
+      const pts = detalle.total;
       const rec = puntos[pr.jugador_id];
       if (fase === 'grupos') rec.grupos += pts;
       else if (fase === 'dieciseisavos') rec.diec += pts;
@@ -1497,6 +1505,10 @@ function renderDashboard(todosProns) {
       else if (fase === 'semis') rec.semi += pts;
       else if (fase === 'tercero') rec.terc += pts;
       else if (fase === 'final') rec.fin += pts;
+      // Breakdown por categoría
+      rec.lev_total  += detalle.lev;
+      rec.marc_total += detalle.marc;
+      rec.dif_total  += detalle.dif;
     }
   }
   if (campeonReal) {
@@ -1594,6 +1606,36 @@ function renderDashboard(todosProns) {
           </tr>
         </thead>
         <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="dash-section">
+    <h2>📊 Composición del puntaje</h2>
+    <div class="dash-table-wrap">
+      <table class="dash-table sticky-first has-name-col" style="min-width:480px;">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th style="text-align:left;">Jugador</th>
+            <th style="color:#22c55e;">L/E/V</th>
+            <th style="color:#f59e0b;">Marcador</th>
+            <th style="color:#f59e0b;">Diferencia</th>
+            <th style="color:#a78bfa;">Campeón</th>
+            <th style="color:#fff;">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>${ranking.map((item, i) => {
+          const { j, r, total } = item;
+          const isMi = j.id === currentPlayer?.id;
+          return `<tr style="${isMi ? 'background:rgba(34,197,94,.05);' : ''}">
+            <td>${i+1}</td>
+            <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
+            ${col(r.lev_total)}${col(r.marc_total)}${col(r.dif_total)}
+            <td class="col-pts" style="color:#a78bfa;">${r.camp > 0 ? '+'+r.camp : '—'}</td>
+            <td class="col-total">${total}</td>
+          </tr>`;
+        }).join('')}</tbody>
       </table>
     </div>
   </div>
