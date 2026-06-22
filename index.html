@@ -72,6 +72,7 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 /* Match cards */
 .match-card { background: #2d2d2d; border: 1px solid #404040; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
 .match-card.cerrado-card { opacity: .75; }
+.match-card.current-match { border-color: #f97316; box-shadow: 0 0 0 1px rgba(249,115,22,.25); }
 .match-teams { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .match-team-name { font-weight: 700; font-size: .95rem; flex: 1; }
 .match-team-name.local { text-align: right; }
@@ -581,6 +582,12 @@ let campeonReal   = null; // el campeón ganador real
 let currentFechaPron  = 1;
 let currentFechaFechas = 1;
 let pronsDraft    = {};   // partido_id -> {gl, gv} pendiente de guardar
+let _alreadyAutoSelected = false;  // flag: auto-select corre una vez por sesión
+
+// ================================================================
+// FEATURE FLAGS
+// ================================================================
+const AUTO_SELECT_CURRENT_FECHA = true;  // Cambiar a false para revertir al default Fecha 1 sin auto-scroll
 
 // ================================================================
 // INIT
@@ -1038,8 +1045,18 @@ async function cargarPronsAll() {
 async function initPronosticos() {
   // partidos ya en memoria desde showApp; solo refrescamos los pronos del usuario
   await cargarPronosMios();
+  let scrollTarget = null;
+  if (AUTO_SELECT_CURRENT_FECHA && !_alreadyAutoSelected) {
+    const target = getCurrentMatchInfo();
+    if (target) {
+      currentFechaPron = target.fecha_numero;
+      _alreadyAutoSelected = true;
+      scrollTarget = target.partido_id;
+    }
+  }
   renderPronFechasPills();
   renderPronosticos();
+  if (scrollTarget) scrollToPartido(scrollTarget);
 }
 
 function renderPronFechasPills() {
@@ -1070,10 +1087,11 @@ function renderPronosticos() {
     wrap.innerHTML = '<div class="muted">No hay partidos para esta fecha.</div>';
     return;
   }
-  wrap.innerHTML = partidos.map(p => renderPronMatchCard(p)).join('');
+  const currentInfo = AUTO_SELECT_CURRENT_FECHA ? getCurrentMatchInfo() : null;
+  wrap.innerHTML = partidos.map(p => renderPronMatchCard(p, currentInfo && currentInfo.partido_id === p.id)).join('');
 }
 
-function renderPronMatchCard(p) {
+function renderPronMatchCard(p, isCurrent) {
   const miPron  = pronsMios[p.id];
   const draft   = pronsDraft[p.id];
   const played  = p.resultado != null;
@@ -1117,7 +1135,7 @@ function renderPronMatchCard(p) {
   }
 
   return `
-  <div class="match-card${cerrado||played?' cerrado-card':''}">
+  <div class="match-card${cerrado||played?' cerrado-card':''}${isCurrent?' current-match':''}" data-partido-id="${p.id}">
     <div class="match-teams">
       <span class="match-team-name local">${p.equipo_local}</span>
       <span class="match-sep">vs</span>
@@ -1229,6 +1247,53 @@ function estaPartidoBloqueado(partido) {
   return new Date() >= getMatchLockTime(partido);
 }
 
+// ================================================================
+// AUTO-SELECT: helpers para encontrar el partido current/upcoming
+// ================================================================
+function getCurrentMatchInfo() {
+  if (!allPartidos || !allPartidos.length) return null;
+  const now = Date.now();
+  // 1. ¿Hay alguno jugándose ahora? (start <= now < start + 2.5h)
+  for (const p of allPartidos) {
+    const utc = HORARIOS[p.numero];
+    if (!utc) continue;
+    const start = new Date(utc).getTime();
+    const end = start + 2.5 * 3600 * 1000;
+    if (now >= start && now < end) {
+      return { fecha_numero: +p.fecha_numero, partido_id: p.id };
+    }
+  }
+  // 2. Próximo a jugarse (smallest positive diff)
+  let next = null, minDiff = Infinity;
+  for (const p of allPartidos) {
+    const utc = HORARIOS[p.numero];
+    if (!utc) continue;
+    const start = new Date(utc).getTime();
+    if (start > now) {
+      const diff = start - now;
+      if (diff < minDiff) { minDiff = diff; next = p; }
+    }
+  }
+  if (next) return { fecha_numero: +next.fecha_numero, partido_id: next.id };
+  // 3. Último ya jugado (postmundial)
+  let latest = null, latestTime = 0;
+  for (const p of allPartidos) {
+    const utc = HORARIOS[p.numero];
+    if (!utc) continue;
+    const t = new Date(utc).getTime();
+    if (t > latestTime) { latestTime = t; latest = p; }
+  }
+  if (latest) return { fecha_numero: +latest.fecha_numero, partido_id: latest.id };
+  return null;
+}
+
+function scrollToPartido(partidoId) {
+  requestAnimationFrame(() => {
+    const card = document.querySelector('[data-partido-id="' + partidoId + '"]');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
 function abrirModalCampeon() {
   if (campeonBloqueado()) { toast('🔒 El pronóstico del campeón está cerrado.', true); return; }
   const sel = document.getElementById('modal-campeon-sel');
@@ -1261,8 +1326,18 @@ async function guardarMiCampeon() {
 async function initFechas() {
   // jugadores/partidos/campeonReal ya en memoria desde showApp; solo refrescamos los pronos de todos
   await cargarPronsAll();
+  let scrollTarget = null;
+  if (AUTO_SELECT_CURRENT_FECHA && !_alreadyAutoSelected) {
+    const target = getCurrentMatchInfo();
+    if (target) {
+      currentFechaFechas = target.fecha_numero;
+      _alreadyAutoSelected = true;
+      scrollTarget = target.partido_id;
+    }
+  }
   renderFechasFechasPills();
   renderFechasTab();
+  if (scrollTarget) scrollToPartido(scrollTarget);
 }
 
 function renderFechasFechasPills() {
@@ -1282,10 +1357,11 @@ function renderFechasTab() {
   const partidos = allPartidos.filter(p => +p.fecha_numero === +currentFechaFechas);
   const wrap = document.getElementById('fechas-content');
   if (!partidos.length) { wrap.innerHTML = '<div class="muted">No hay partidos para esta fecha.</div>'; return; }
-  wrap.innerHTML = partidos.map(p => renderFechasMatchCard(p)).join('');
+  const currentInfo = AUTO_SELECT_CURRENT_FECHA ? getCurrentMatchInfo() : null;
+  wrap.innerHTML = partidos.map(p => renderFechasMatchCard(p, currentInfo && currentInfo.partido_id === p.id)).join('');
 }
 
-function renderFechasMatchCard(p) {
+function renderFechasMatchCard(p, isCurrent) {
   const faseCss = FASE_CSS[p.fase] || 'fase-grupos';
   const prons = pronsAll[p.id] || [];
 
@@ -1330,7 +1406,7 @@ function renderFechasMatchCard(p) {
   }
 
   return `
-  <div class="match-card">
+  <div class="match-card${isCurrent?' current-match':''}" data-partido-id="${p.id}">
     <div class="match-teams">
       <span class="match-team-name local">${p.equipo_local}</span>
       <span class="match-sep">vs</span>
