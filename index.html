@@ -582,7 +582,8 @@ let campeonReal   = null; // el campeón ganador real
 let currentFechaPron  = 1;
 let currentFechaFechas = 1;
 let pronsDraft    = {};   // partido_id -> {gl, gv} pendiente de guardar
-let _alreadyAutoSelected = false;  // flag: auto-select corre una vez por sesión
+let _alreadyAutoSelectedPron   = false;  // auto-select Pronósticos: una vez por sesión
+let _alreadyAutoSelectedFechas = false;  // auto-select Fechas: una vez por sesión
 
 // ================================================================
 // FEATURE FLAGS
@@ -1046,11 +1047,11 @@ async function initPronosticos() {
   // partidos ya en memoria desde showApp; solo refrescamos los pronos del usuario
   await cargarPronosMios();
   let scrollTarget = null;
-  if (AUTO_SELECT_CURRENT_FECHA && !_alreadyAutoSelected) {
+  if (AUTO_SELECT_CURRENT_FECHA && !_alreadyAutoSelectedPron) {
     const target = getCurrentMatchInfo();
     if (target) {
       currentFechaPron = target.fecha_numero;
-      _alreadyAutoSelected = true;
+      _alreadyAutoSelectedPron = true;
       scrollTarget = target.partido_id;
     }
   }
@@ -1327,11 +1328,11 @@ async function initFechas() {
   // jugadores/partidos/campeonReal ya en memoria desde showApp; solo refrescamos los pronos de todos
   await cargarPronsAll();
   let scrollTarget = null;
-  if (AUTO_SELECT_CURRENT_FECHA && !_alreadyAutoSelected) {
+  if (AUTO_SELECT_CURRENT_FECHA && !_alreadyAutoSelectedFechas) {
     const target = getCurrentMatchInfo();
     if (target) {
       currentFechaFechas = target.fecha_numero;
-      _alreadyAutoSelected = true;
+      _alreadyAutoSelectedFechas = true;
       scrollTarget = target.partido_id;
     }
   }
