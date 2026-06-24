@@ -584,6 +584,8 @@ let currentFechaFechas = 1;
 let pronsDraft    = {};   // partido_id -> {gl, gv} pendiente de guardar
 let _alreadyAutoSelectedPron   = false;  // auto-select Pronósticos: una vez por sesión
 let _alreadyAutoSelectedFechas = false;  // auto-select Fechas: una vez por sesión
+const _scrollMemory = {};                // scrollY por tab para preservar posición entre cambios
+let _currentTab = 'pronosticos';         // tab actualmente visible (default al login)
 
 // ================================================================
 // FEATURE FLAGS
@@ -909,17 +911,26 @@ async function showApp() {
 }
 
 async function switchTab(tab) {
+  // Guardar scroll del tab que estamos dejando
+  if (_currentTab && _currentTab !== tab) {
+    _scrollMemory[_currentTab] = window.scrollY;
+  }
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === tab);
   });
   ['pronosticos','fechas','dashboard','puntaje','jugadores'].forEach(p => {
     document.getElementById('page-' + p).classList.toggle('hidden', p !== tab);
   });
+  _currentTab = tab;
   if (tab === 'pronosticos')  await initPronosticos();
   if (tab === 'fechas')       await initFechas();
   if (tab === 'dashboard')    await initDashboard();
   if (tab === 'puntaje')      initPuntaje();
   if (tab === 'jugadores')    await initJugadores();
+  // Restaurar scroll si tenemos memoria para este tab (solo si NO acabamos de hacer auto-scroll)
+  if (_scrollMemory[tab] !== undefined) {
+    requestAnimationFrame(() => window.scrollTo(0, _scrollMemory[tab]));
+  }
 }
 
 // ================================================================
@@ -1057,7 +1068,7 @@ async function initPronosticos() {
   }
   renderPronFechasPills();
   renderPronosticos();
-  if (scrollTarget) scrollToPartido(scrollTarget);
+  if (scrollTarget) scrollToPartido(scrollTarget, '#page-pronosticos');
 }
 
 function renderPronFechasPills() {
@@ -1288,9 +1299,10 @@ function getCurrentMatchInfo() {
   return null;
 }
 
-function scrollToPartido(partidoId) {
+function scrollToPartido(partidoId, scope) {
   requestAnimationFrame(() => {
-    const card = document.querySelector('[data-partido-id="' + partidoId + '"]');
+    const sel = (scope ? scope + ' ' : '') + '[data-partido-id="' + partidoId + '"]';
+    const card = document.querySelector(sel);
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 }
@@ -1338,7 +1350,7 @@ async function initFechas() {
   }
   renderFechasFechasPills();
   renderFechasTab();
-  if (scrollTarget) scrollToPartido(scrollTarget);
+  if (scrollTarget) scrollToPartido(scrollTarget, '#page-fechas');
 }
 
 function renderFechasFechasPills() {
@@ -1385,9 +1397,12 @@ function renderFechasMatchCard(p, isCurrent) {
       </div>`;
   }
 
-  // Pronósticos de todos los jugadores
+  // Pronósticos de todos los jugadores — solo visibles si el partido ya empezó (anti-spoiler)
   let pronsHtml = '';
-  if (prons.length) {
+  const visiblePronos = estaPartidoBloqueado(p);
+  if (!visiblePronos) {
+    pronsHtml = '<div style="font-size:.78rem;color:#6b7280;margin-top:6px;">🔒 Pronósticos visibles cuando arranque el partido.</div>';
+  } else if (prons.length) {
     pronsHtml = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">';
     for (const pr of prons) {
       const jug = jugPorId[pr.jugador_id];
