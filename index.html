@@ -132,7 +132,31 @@ input.score-inp { width: 52px !important; min-width: 52px; max-width: 52px; text
 .dash-table.sticky-first.has-name-col td:nth-child(2) {
   position: sticky; left: 36px; background: #2d2d2d; z-index: 1;
   border-right: 1px solid #333333;
+  width: 115px; min-width: 115px; max-width: 115px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Ranking General: # | Jugador | TOTAL son sticky; el resto scrollea */
+.dash-table.sticky-first.has-total-col th:first-child,
+.dash-table.sticky-first.has-total-col td:first-child {
+  width: 36px; min-width: 36px; max-width: 36px; text-align: center;
+}
+.dash-table.sticky-first.has-total-col th:nth-child(2),
+.dash-table.sticky-first.has-total-col td:nth-child(2) {
+  position: sticky; left: 36px; background: #2d2d2d; z-index: 1;
+  width: 115px; min-width: 115px; max-width: 115px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-table.sticky-first.has-total-col th:nth-child(3),
+.dash-table.sticky-first.has-total-col td:nth-child(3) {
+  position: sticky; left: 151px; background: #2d2d2d; z-index: 2;
+  width: 64px; min-width: 64px; max-width: 64px;
+  border-right: 2px solid #4d4d4d;
+}
+/* Sortable headers */
+.dash-table th.sortable { cursor: pointer; user-select: none; }
+.dash-table th.sortable:hover { color: #fff; background: #363636; }
+.dash-table th.sortable .sort-arrow { display: inline-block; margin-left: 4px; font-size: .7rem; opacity: .55; }
+.dash-table th.sortable.sort-active .sort-arrow { opacity: 1; color: #f97316; }
 .player-color-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
 /* Jugadores admin */
 .j-list { display: flex; flex-direction: column; gap: 8px; }
@@ -980,6 +1004,18 @@ function formatHorarioLocal(numeroPartido) {
   return d.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', hour12:false }) + ' hs';
 }
 
+// Orden cronologico por horario UTC del partido. Solo afecta la
+// visualizacion; los pronosticos estan ligados por partido_id, asi que
+// reordenar aca no toca ningun dato guardado.
+function sortByKickoff(a, b) {
+  const ta = HORARIOS[a.numero] || '';
+  const tb = HORARIOS[b.numero] || '';
+  if (ta && tb && ta !== tb) return ta < tb ? -1 : 1;
+  if (ta && !tb) return -1;
+  if (!ta && tb) return 1;
+  return (a.numero || 0) - (b.numero || 0);
+}
+
 function displayPlayerName(j) {
   return (typeof NAME_OVERRIDES !== 'undefined' && NAME_OVERRIDES[j.nombre]) || j.nombre;
 }
@@ -1093,7 +1129,9 @@ function selFechaPron(fn) {
 
 function renderPronosticos() {
   const fn = +currentFechaPron;
-  const partidos = allPartidos.filter(p => +p.fecha_numero === fn);
+  const partidos = allPartidos
+    .filter(p => +p.fecha_numero === fn)
+    .sort(sortByKickoff);
   const wrap = document.getElementById('pron-content');
   if (!partidos.length) {
     wrap.innerHTML = '<div class="muted">No hay partidos para esta fecha.</div>';
@@ -1367,7 +1405,9 @@ function selFechaFechas(fn) {
 }
 
 function renderFechasTab() {
-  const partidos = allPartidos.filter(p => +p.fecha_numero === +currentFechaFechas);
+  const partidos = allPartidos
+    .filter(p => +p.fecha_numero === +currentFechaFechas)
+    .sort(sortByKickoff);
   const wrap = document.getElementById('fechas-content');
   if (!partidos.length) { wrap.innerHTML = '<div class="muted">No hay partidos para esta fecha.</div>'; return; }
   const currentInfo = AUTO_SELECT_CURRENT_FECHA ? getCurrentMatchInfo() : null;
@@ -1568,23 +1608,25 @@ function calcPuntos(partido, pron) {
   return calcPuntosDetalle(partido, pron).total;
 }
 
+// Estado de sort para Composicion y Porcentaje (re-render al click)
+let _dashSortComp = { col: 'total', dir: 'desc' };
+let _dashSortPct  = { col: 'pctOk', dir: 'desc' };
+let _dashCache    = null;
+
 function renderDashboard(todosProns) {
-  // Filtrar jugadores ocultos del Dashboard (login y otras tabs no se ven afectados)
   const jugadoresVisibles = allJugadores.filter(j =>
     typeof HIDDEN_IN_DASHBOARD === 'undefined' || !HIDDEN_IN_DASHBOARD.includes(j.nombre)
   );
-  // Agrupar pronósticos por partido_id (O(n) en lugar de O(n²) en los loops)
   const pronsPorPartido = {};
   for (const pr of todosProns) {
     if (!pronsPorPartido[pr.partido_id]) pronsPorPartido[pr.partido_id] = [];
     pronsPorPartido[pr.partido_id].push(pr);
   }
-  // Calcular puntos por jugador
   const puntos = {};
   for (const j of jugadoresVisibles) {
     puntos[j.id] = {
       grupos:0, diec:0, oct:0, cuart:0, semi:0, terc:0, fin:0, camp:0,
-      lev_total:0, marc_total:0, dif_total:0  // breakdown por categoría
+      lev_total:0, marc_total:0, dif_total:0
     };
   }
   for (const p of allPartidos) {
@@ -1602,7 +1644,6 @@ function renderDashboard(todosProns) {
       else if (fase === 'semis') rec.semi += pts;
       else if (fase === 'tercero') rec.terc += pts;
       else if (fase === 'final') rec.fin += pts;
-      // Breakdown por categoría
       rec.lev_total  += detalle.lev;
       rec.marc_total += detalle.marc;
       rec.dif_total  += detalle.dif;
@@ -1616,36 +1657,12 @@ function renderDashboard(todosProns) {
     }
   }
 
-  // Ordenar jugadores por total desc
   const ranking = jugadoresVisibles.map(j => {
     const r = puntos[j.id] || { grupos:0, diec:0, oct:0, cuart:0, semi:0, terc:0, fin:0, camp:0 };
     const total = r.grupos + r.diec + r.oct + r.cuart + r.semi + r.terc + r.fin + r.camp;
     return { j, r, total };
   }).sort((a, b) => b.total - a.total);
 
-  const col = (v) => v > 0 ? `<td class="col-pts">${v}</td>` : `<td class="col-pts-0">—</td>`;
-
-  const rows = ranking.map((item, i) => {
-    const { j, r, total } = item;
-    const isMi = j.id === currentPlayer?.id;
-    let campCell = '—';
-    if (r.camp > 0) {
-      campCell = String(r.camp);
-    } else if (campeonReal) {
-      campCell = j.campeon
-        ? (j.campeon.trim().toUpperCase() === campeonReal.trim().toUpperCase() ? `✅ +${configPuntos.bonus_campeon}` : '❌')
-        : '—';
-    }
-    return `<tr style="${isMi ? 'background:rgba(249,115,22,.05);' : ''}">
-      <td>${i+1}</td>
-      <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
-      ${col(r.grupos)}${col(r.diec)}${col(r.oct)}${col(r.cuart)}${col(r.semi)}${col(r.terc)}${col(r.fin)}
-      <td class="col-pts" style="color:#a78bfa;">${campCell}</td>
-      <td class="col-total">${total}</td>
-    </tr>`;
-  }).join('');
-
-  // Porcentaje de acierto: 3 métricas (L/E/V, marcador exacto, diferencia exacta)
   const stats = {};
   for (const j of jugadoresVisibles) stats[j.id] = { ok:0, marc:0, dif:0, tot:0 };
   for (const p of allPartidos) {
@@ -1662,103 +1679,206 @@ function renderDashboard(todosProns) {
       }
     }
   }
-  // Ordenar jugadores por % L/E/V desc ANTES de generar las filas
   const statsRanking = jugadoresVisibles.map(j => {
-    const s = stats[j.id] || { ok:0, marc:0, dif:0, tot:0 };
-    const pctOk   = s.tot > 0 ? Math.round(s.ok   / s.tot * 100) : 0;
-    const pctMarc = s.tot > 0 ? Math.round(s.marc / s.tot * 100) : 0;
-    const pctDif  = s.tot > 0 ? Math.round(s.dif  / s.tot * 100) : 0;
-    return { j, s, pctOk, pctMarc, pctDif };
-  }).sort((a, b) => b.pctOk - a.pctOk);
-  // Celda count + % chico y grisado
+    const s2 = stats[j.id] || { ok:0, marc:0, dif:0, tot:0 };
+    const pctOk   = s2.tot > 0 ? Math.round(s2.ok   / s2.tot * 100) : 0;
+    const pctMarc = s2.tot > 0 ? Math.round(s2.marc / s2.tot * 100) : 0;
+    const pctDif  = s2.tot > 0 ? Math.round(s2.dif  / s2.tot * 100) : 0;
+    return { j, s: s2, pctOk, pctMarc, pctDif };
+  });
+
+  _dashCache = { ranking, statsRanking, todosProns };
+
+  const html = `
+  <div class="dash-section">
+    <h2>🏆 Ranking General</h2>
+    <div class="dash-table-wrap">
+      ${renderRankingGeneralTable(ranking)}
+    </div>
+  </div>
+
+  <div class="dash-section">
+    <h2>📊 Composición del puntaje</h2>
+    <div id="dash-comp-wrap" class="dash-table-wrap">
+      ${renderCompTable(ranking)}
+    </div>
+  </div>
+
+  <div class="dash-section">
+    <h2>🎯 Porcentaje de Acierto</h2>
+    <div id="dash-pct-wrap" class="dash-table-wrap">
+      ${renderPctTable(statsRanking)}
+    </div>
+  </div>
+
+  ${renderMiDesglose(todosProns)}`;
+
+  document.getElementById('dashboard-content').innerHTML = html;
+}
+
+function renderRankingGeneralTable(ranking) {
+  const col = (v) => v > 0 ? `<td class="col-pts">${v}</td>` : `<td class="col-pts-0">—</td>`;
+  const rows = ranking.map((item, i) => {
+    const { j, r, total } = item;
+    const isMi = j.id === currentPlayer?.id;
+    let campCell = '—';
+    if (r.camp > 0) {
+      campCell = String(r.camp);
+    } else if (campeonReal) {
+      campCell = j.campeon
+        ? (j.campeon.trim().toUpperCase() === campeonReal.trim().toUpperCase() ? `✅ +${configPuntos.bonus_campeon}` : '❌')
+        : '—';
+    }
+    return `<tr style="${isMi ? 'background:rgba(249,115,22,.05);' : ''}">
+      <td>${i+1}</td>
+      <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
+      <td class="col-total">${total}</td>
+      ${col(r.grupos)}${col(r.diec)}${col(r.oct)}${col(r.cuart)}${col(r.semi)}${col(r.terc)}${col(r.fin)}
+      <td class="col-pts" style="color:#a78bfa;">${campCell}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <table class="dash-table sticky-first has-total-col" style="min-width:780px;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th style="text-align:left;">Jugador</th>
+          <th style="color:#fff;">TOTAL</th>
+          <th>Grupos</th>
+          <th>16avos</th>
+          <th>8vos</th>
+          <th>Cuartos</th>
+          <th>Semis</th>
+          <th>3ro</th>
+          <th>Final</th>
+          <th style="color:#a78bfa;">Campeón</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderCompTable(ranking) {
+  const col = (v) => v > 0 ? `<td class="col-pts">${v}</td>` : `<td class="col-pts-0">—</td>`;
+  const sortKey = _dashSortComp.col;
+  const sortDir = _dashSortComp.dir;
+  const dirMul  = sortDir === 'asc' ? 1 : -1;
+  const getVal = (item, key) => {
+    switch(key) {
+      case 'name':  return displayPlayerName(item.j).toLowerCase();
+      case 'lev':   return item.r.lev_total;
+      case 'marc':  return item.r.marc_total;
+      case 'dif':   return item.r.dif_total;
+      case 'camp':  return item.r.camp;
+      case 'total': return item.total;
+      default: return item.total;
+    }
+  };
+  const sorted = ranking.slice().sort((a, b) => {
+    const va = getVal(a, sortKey), vb = getVal(b, sortKey);
+    if (typeof va === 'string') return va.localeCompare(vb) * dirMul;
+    return (va - vb) * dirMul;
+  });
+  const rows = sorted.map((item, i) => {
+    const { j, r, total } = item;
+    const isMi = j.id === currentPlayer?.id;
+    return `<tr style="${isMi ? 'background:rgba(249,115,22,.05);' : ''}">
+      <td>${i+1}</td>
+      <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
+      ${col(r.lev_total)}${col(r.marc_total)}${col(r.dif_total)}
+      <td class="col-pts" style="color:#a78bfa;">${r.camp > 0 ? '+'+r.camp : '—'}</td>
+      <td class="col-total">${total}</td>
+    </tr>`;
+  }).join('');
+  const arrow = (key) => key === sortKey ? (sortDir === 'asc' ? '▲' : '▼') : '⇅';
+  const cls   = (key) => 'sortable' + (key === sortKey ? ' sort-active' : '');
+  return `
+    <table class="dash-table sticky-first has-name-col" style="min-width:520px;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th class="${cls('name')}" style="text-align:left;" onclick="sortDashComp('name')">Jugador <span class="sort-arrow">${arrow('name')}</span></th>
+          <th class="${cls('lev')}"  style="color:#f97316;" onclick="sortDashComp('lev')">L/E/V <span class="sort-arrow">${arrow('lev')}</span></th>
+          <th class="${cls('marc')}" style="color:#f59e0b;" onclick="sortDashComp('marc')">Marcador <span class="sort-arrow">${arrow('marc')}</span></th>
+          <th class="${cls('dif')}"  style="color:#f59e0b;" onclick="sortDashComp('dif')">Diferencia <span class="sort-arrow">${arrow('dif')}</span></th>
+          <th class="${cls('camp')}" style="color:#a78bfa;" onclick="sortDashComp('camp')">Campeón <span class="sort-arrow">${arrow('camp')}</span></th>
+          <th class="${cls('total')}" style="color:#fff;" onclick="sortDashComp('total')">TOTAL <span class="sort-arrow">${arrow('total')}</span></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function sortDashComp(col) {
+  if (_dashSortComp.col === col) {
+    _dashSortComp.dir = _dashSortComp.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    _dashSortComp.col = col;
+    _dashSortComp.dir = col === 'name' ? 'asc' : 'desc';
+  }
+  if (_dashCache) {
+    document.getElementById('dash-comp-wrap').innerHTML = renderCompTable(_dashCache.ranking);
+  }
+}
+
+function renderPctTable(statsRanking) {
+  const sortKey = _dashSortPct.col;
+  const sortDir = _dashSortPct.dir;
+  const dirMul  = sortDir === 'asc' ? 1 : -1;
+  const getVal = (it, key) => {
+    switch(key) {
+      case 'name':    return displayPlayerName(it.j).toLowerCase();
+      case 'jugados': return it.s.tot;
+      case 'ok':      return it.pctOk;
+      case 'marc':    return it.pctMarc;
+      case 'dif':     return it.pctDif;
+      default: return it.pctOk;
+    }
+  };
+  const sorted = statsRanking.slice().sort((a, b) => {
+    const va = getVal(a, sortKey), vb = getVal(b, sortKey);
+    if (typeof va === 'string') return va.localeCompare(vb) * dirMul;
+    return (va - vb) * dirMul;
+  });
   const cellCP = (count, pct, hasData) => hasData
     ? `<td class="col-pts"><span style="font-weight:700;">${count}</span> <span style="font-size:.7rem;color:#6b7280;font-weight:400;">${pct}%</span></td>`
     : `<td class="col-pts-0">—</td>`;
-  const statsRows = statsRanking.map(({ j, s, pctOk, pctMarc, pctDif }) => `<tr>
+  const rows = sorted.map(({ j, s, pctOk, pctMarc, pctDif }) => `<tr>
       <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
       <td class="col-pts">${s.tot}</td>
       ${cellCP(s.ok,   pctOk,   s.tot > 0)}
       ${cellCP(s.marc, pctMarc, s.tot > 0)}
       ${cellCP(s.dif,  pctDif,  s.tot > 0)}
     </tr>`).join('');
-
-  const html = `
-  <div class="dash-section">
-    <h2>🏆 Ranking General</h2>
-    <div class="dash-table-wrap">
-      <table class="dash-table sticky-first has-name-col" style="min-width:680px;">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th style="text-align:left;">Jugador</th>
-            <th>Grupos</th>
-            <th>16avos</th>
-            <th>8vos</th>
-            <th>Cuartos</th>
-            <th>Semis</th>
-            <th>3ro</th>
-            <th>Final</th>
-            <th style="color:#a78bfa;">Campeón</th>
-            <th style="color:#fff;">TOTAL</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="dash-section">
-    <h2>📊 Composición del puntaje</h2>
-    <div class="dash-table-wrap">
-      <table class="dash-table sticky-first has-name-col" style="min-width:480px;">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th style="text-align:left;">Jugador</th>
-            <th style="color:#22c55e;">L/E/V</th>
-            <th style="color:#f59e0b;">Marcador</th>
-            <th style="color:#f59e0b;">Diferencia</th>
-            <th style="color:#a78bfa;">Campeón</th>
-            <th style="color:#fff;">TOTAL</th>
-          </tr>
-        </thead>
-        <tbody>${ranking.map((item, i) => {
-          const { j, r, total } = item;
-          const isMi = j.id === currentPlayer?.id;
-          return `<tr style="${isMi ? 'background:rgba(34,197,94,.05);' : ''}">
-            <td>${i+1}</td>
-            <td class="col-name"><span class="player-color-dot" style="background:${j.color};"></span>${displayPlayerName(j)}</td>
-            ${col(r.lev_total)}${col(r.marc_total)}${col(r.dif_total)}
-            <td class="col-pts" style="color:#a78bfa;">${r.camp > 0 ? '+'+r.camp : '—'}</td>
-            <td class="col-total">${total}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
-    </div>
-  </div>
-
-  ${renderMiDesglose(todosProns)}
-
-  <div class="dash-section">
-    <h2>🎯 Porcentaje de Acierto</h2>
-    <div class="dash-table-wrap">
-      <table class="dash-table sticky-first" style="min-width:480px;">
-        <thead>
-          <tr>
-            <th style="text-align:left;">Jugador</th>
-            <th>Jugados</th>
-            <th>L/E/V</th>
-            <th>Marcador exacto</th>
-            <th>Diferencia exacta</th>
-          </tr>
-        </thead>
-        <tbody>${statsRows}</tbody>
-      </table>
-    </div>
-  </div>`;
-
-  document.getElementById('dashboard-content').innerHTML = html;
+  const arrow = (key) => key === sortKey ? (sortDir === 'asc' ? '▲' : '▼') : '⇅';
+  const cls   = (key) => 'sortable' + (key === sortKey ? ' sort-active' : '');
+  return `
+    <table class="dash-table sticky-first" style="min-width:480px;">
+      <thead>
+        <tr>
+          <th class="${cls('name')}"    style="text-align:left;" onclick="sortDashPct('name')">Jugador <span class="sort-arrow">${arrow('name')}</span></th>
+          <th class="${cls('jugados')}" onclick="sortDashPct('jugados')">Jugados <span class="sort-arrow">${arrow('jugados')}</span></th>
+          <th class="${cls('ok')}"      onclick="sortDashPct('ok')">L/E/V <span class="sort-arrow">${arrow('ok')}</span></th>
+          <th class="${cls('marc')}"    onclick="sortDashPct('marc')">Marcador exacto <span class="sort-arrow">${arrow('marc')}</span></th>
+          <th class="${cls('dif')}"     onclick="sortDashPct('dif')">Diferencia exacta <span class="sort-arrow">${arrow('dif')}</span></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
+
+function sortDashPct(col) {
+  if (_dashSortPct.col === col) {
+    _dashSortPct.dir = _dashSortPct.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    _dashSortPct.col = col;
+    _dashSortPct.dir = col === 'name' ? 'asc' : 'desc';
+  }
+  if (_dashCache) {
+    document.getElementById('dash-pct-wrap').innerHTML = renderPctTable(_dashCache.statsRanking);
+  }
+}
+
 
 function renderMiDesglose(todosProns) {
   const mi = currentPlayer;
